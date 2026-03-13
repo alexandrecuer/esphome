@@ -71,6 +71,8 @@ class EmonTx : public PollingComponent,
 
   void parse_json_(const std::string &data);
 
+  void parse_data_(const std::string &data);
+
   // Service callback wrapper (register_service requires std::string by value)
   void on_send_command_service_(std::string command) { this->send_command(command); }  // NOLINT
 

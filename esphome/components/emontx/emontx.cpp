@@ -1,3 +1,8 @@
+#include <string>
+#include <map>
+#include <sstream>
+#include <cstdlib>
+
 #include "emontx.h"
 #include "esphome/core/log.h"
 #include "esphome/core/application.h"
@@ -11,6 +16,23 @@
 namespace esphome::emontx {
 
 static const char *const TAG = "emontx";
+
+std::map<std::string, std::string> parseTrame(const std::string &trame) {
+    std::map<std::string, std::string> result;
+    std::istringstream iss(trame);
+    std::string pair;
+
+    while (std::getline(iss, pair, ',')) {
+        size_t colonPos = pair.find(':');
+        if (colonPos != std::string::npos) {
+            std::string key = pair.substr(0, colonPos);
+            std::string value = pair.substr(colonPos + 1);
+            result[key] = value;
+        }
+    }
+    return result;
+}
+
 
 /**
  * @brief Initializes the EmonTx component.
@@ -148,9 +170,14 @@ void EmonTx::loop() {
         this->data_callbacks_.call(line);
 
         // Check if this line is JSON (starts with '{')
-        if (!line.empty() && line[0] == '{') {
-          ESP_LOGV(TAG, "Line is JSON, parsing...");
-          this->parse_json_(line);
+        if (!line.empty()) {
+          if (line[0] == '{') {
+            ESP_LOGV(TAG, "Line is JSON, parsing...");
+            this->parse_json_(line);
+          } else {
+            ESP_LOGV(TAG, "Line is plain text, parsing...");
+            this->parse_data_(line);
+          }
         }
       }
     } else {
@@ -163,6 +190,26 @@ void EmonTx::loop() {
       }
     }
   }
+}
+
+void EmonTx::parse_data_(const std::string &data) {
+    ESP_LOGV(TAG, "Parsing plain text: %s", data.c_str());
+    auto parsed_data = parseTrame(data);
+
+    for (auto &sensor_pair : this->sensors_) {
+        const char *tag = sensor_pair.first;
+        sensor::Sensor *sensor_ptr = sensor_pair.second;
+
+        if (parsed_data.find(tag) != parsed_data.end()) {
+            try {
+                float value = std::stof(parsed_data[tag]);
+                ESP_LOGV(TAG, "Updating sensor '%s' with value: %.2f", tag, value);
+                sensor_ptr->publish_state(value);
+            } catch (...) {
+                ESP_LOGE(TAG, "Failed to convert value for sensor '%s'", tag);
+            }
+        }
+    }
 }
 
 /**
