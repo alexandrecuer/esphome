@@ -198,14 +198,19 @@ void EmonTx::parse_data_(const std::string &data) {
 
     for (auto &sensor_pair : this->sensors_) {
         const char *tag = sensor_pair.first;
-        sensor::Sensor *sensor_ptr = sensor_pair.second;
-
-        if (parsed_data.find(tag) != parsed_data.end()) {
-            try {
-                float value = std::stof(parsed_data[tag]);
-                ESP_LOGV(TAG, "Updating sensor '%s' with value: %.2f", tag, value);
-                sensor_ptr->publish_state(value);
-            } catch (...) {
+        auto it = parsed_data.find(tag);
+        if (it != parsed_data.end()) {
+            bool is_valid = !it->second.empty();
+            for (char c : it->second) {
+                if (!isdigit(c) && c != '-' && c != '.') {
+                    is_valid = false;
+                    break;
+                }
+            }
+            if (is_valid) {
+                float value = std::stof(it->second);
+                sensor_pair.second->publish_state(value);
+            } else {
                 ESP_LOGE(TAG, "Failed to convert value for sensor '%s'", tag);
             }
         }
